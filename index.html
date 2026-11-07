@@ -70,7 +70,7 @@ renderer.toneMappingExposure = 1.08;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x9fc8de, 220, 520);
+scene.fog = new THREE.Fog(0xbfe0f4, 220, 520);
 
 const camera = new THREE.PerspectiveCamera(46, innerWidth/innerHeight, 0.1, 1200);
 camera.position.set(10, 12.5, 63);
@@ -94,7 +94,7 @@ function skyTexture(stops){
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 const skyHall = skyTexture([[0,"#05080e"],[0.5,"#141e2a"],[0.78,"#232f3d"],[1,"#0a0e14"]]);
-const skyDay  = skyTexture([[0,"#3f8fc4"],[0.55,"#8ec3e2"],[0.78,"#cfe7f2"],[1,"#e8f3f7"]]);
+const skyDay  = skyTexture([[0,"#2b78c8"],[0.55,"#7cb8e8"],[0.78,"#d3ecfa"],[1,"#eef8fd"]]);
 const skyMat = new THREE.MeshBasicMaterial({ map: skyDay, side: THREE.BackSide, fog:false });
 const sky = new THREE.Mesh(new THREE.SphereGeometry(520, 24, 16), skyMat);
 scene.add(sky);
@@ -525,7 +525,7 @@ const exhibit = new THREE.Group(); exhibit.visible = false; scene.add(exhibit);
 
 /* ============ OCEAN (sea mode) ============ */
 const oceanGeo = new THREE.PlaneGeometry(560, 560, 72, 72);
-const oceanMat = new THREE.MeshStandardMaterial({ color:0x1a7263, roughness:0.62, metalness:0.0, transparent:true, opacity:0.94 });
+const oceanMat = new THREE.MeshStandardMaterial({ color:0x0d55a3, roughness:0.48, metalness:0.0, transparent:true, opacity:0.94 });
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
 ocean.rotation.x = -Math.PI/2; ocean.position.y = 0;
 ocean.receiveShadow = true;
@@ -557,6 +557,18 @@ function foamPlane(w, l, x, z, ry, wake=false){
 }
 foamPlane(15, 5.5, 23.5, 5.2, -0.55); foamPlane(15, 5.5, 23.5, -5.2, 0.55);   // bow splash
 foamPlane(47, 2.4, -2, 7.0, 0); foamPlane(47, 2.4, -2, -7.0, 0);              // collar
+{
+  const c = document.createElement("canvas"); c.width = 256; c.height = 64;
+  const g = c.getContext("2d");
+  const grad = g.createLinearGradient(0, 0, 256, 0);
+  grad.addColorStop(0, "rgba(140,220,225,0.55)"); grad.addColorStop(1, "rgba(140,220,225,0)");
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 64);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const trail = new THREE.Mesh(new THREE.PlaneGeometry(52, 15),
+    new THREE.MeshBasicMaterial({ map:t, transparent:true, depthWrite:false }));
+  trail.rotation.x = -Math.PI/2; trail.rotation.z = Math.PI;
+  trail.position.set(-48, 0.18, 0); foam.add(trail);
+}
 foamPlane(36, 12, -42, 0, 0, true);                                            // stern wake
 foamPlane(24, 3.2, -36, 6.5, 0.5, true); foamPlane(24, 3.2, -36, -6.5, -0.5, true); // V wake
 
@@ -622,7 +634,7 @@ btnMode.addEventListener("click", ()=>{
   exhibit.visible = !sea; foam.visible = sea;
   ocean.visible = sea;
   skyMat.map = sea ? skyDay : skyHall; skyMat.needsUpdate = true;
-  scene.fog.color.set(sea ? 0x9fc8de : 0x0a0e14);
+  scene.fog.color.set(sea ? 0xbfe0f4 : 0x0a0e14);
   sun.intensity = sea ? 2.6 : 1.5;
   spot1.intensity = sea ? 0 : 430; spot2.intensity = sea ? 0 : 270; spot3.intensity = sea ? 0 : 200;
   btnMode.textContent = sea ? "🏛️ Về bệ trưng bày" : "🌊 Ra biển";
