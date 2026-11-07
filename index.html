@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAPPY HUNTER — Tàu kéo Mammoet 3D</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;font-family:"Segoe UI",system-ui,sans-serif;background:#7db8d6}
+  #scene{position:fixed;inset:0}
+  canvas{display:block}
+  .panel{position:fixed;top:16px;left:16px;z-index:10;background:rgba(8,25,38,.78);color:#fff;
+    padding:14px 18px;border-radius:14px;backdrop-filter:blur(8px);max-width:360px;border:1px solid rgba(255,255,255,.14)}
+  .panel h1{font-size:21px;letter-spacing:.5px}
+  .panel h1 span{color:#ffc400}
+  .panel p{font-size:12.5px;opacity:.85;margin-top:4px;line-height:1.5}
+  .panel .spec{margin-top:8px;font-size:11.5px;color:#ffd94d}
+  .bar{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:10;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;padding:0 10px}
+  .bar button{background:rgba(8,25,38,.82);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:999px;
+    padding:9px 15px;font-size:13px;cursor:pointer;backdrop-filter:blur(8px);transition:.15s}
+  .bar button:hover{background:#ffc400;color:#12212e;border-color:#ffc400}
+  .bar button.on{background:#ffc400;color:#12212e;border-color:#ffc400}
+  .hint{position:fixed;right:16px;bottom:16px;z-index:10;color:#fff;background:rgba(8,25,38,.6);
+    font-size:11.5px;padding:7px 12px;border-radius:999px}
+  #labels{position:fixed;inset:0;pointer-events:none;z-index:5;overflow:hidden}
+  .lbl{position:absolute;transform:translate(-50%,-130%);background:rgba(8,25,38,.85);color:#fff;
+    font-size:11px;padding:3px 8px;border-radius:999px;white-space:nowrap;border:1px solid rgba(255,196,0,.55)}
+  .lbl::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:14px;background:rgba(255,196,0,.8)}
+  @media(max-width:640px){.panel{max-width:250px;padding:10px 12px}.panel h1{font-size:16px}.hint{display:none}}
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div id="labels"></div>
+<div class="panel">
+  <h1>HAPPY <span>HUNTER</span></h1>
+  <p>Tàu kéo cứu hộ <b>Mammoet — Amsterdam</b>, dựng 3D bằng Three.js đúng theo 3 ảnh mẫu: thân vàng / đáy đỏ, đài chỉ huy mái xanh, ống khói vàng, boong làm việc ở đuôi và <b>2 chân vịt trong ống Kort</b> ở đuôi tàu.</p>
+  <div class="spec">Kiểu tàu: Tug / AHTS • 2 chân vịt Kort + 2 bánh lái • Máy đẩy mũi • Tời kéo ở boong đuôi</div>
+</div>
+<div class="bar">
+  <button data-view="toan">🌊 Toàn cảnh</button>
+  <button data-view="mui">⚓ Cận cảnh mũi</button>
+  <button data-view="dui">🌀 Đuôi — chân vịt</button>
+  <button data-view="boong">🪝 Boong làm việc</button>
+  <button data-view="dai">🛟 Đài chỉ huy</button>
+  <button id="btnLabels" class="on">🏷️ Nhãn</button>
+  <button id="btnSpin" class="on">🔄 Tự xoay</button>
+</div>
+<div class="hint">Kéo chuột để xoay • Lăn chuột để zoom • Chuột phải để dời cảnh</div>
+
+<script type="importmap">
+{"imports":{"three":"./three.module.js","three/addons/":"./addons/"}}
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+/* ============ RENDERER / SCENE / CAMERA ============ */
+const container = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x9fc8de, 180, 420);
+
+const camera = new THREE.PerspectiveCamera(46, innerWidth/innerHeight, 0.1, 1000);
+camera.position.set(40, 17, 47);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.maxDistance = 180;
+controls.minDistance = 8;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.55;
+
+/* Sky: gradient dome from a canvas texture */
+{
+  const c = document.createElement("canvas"); c.width = 4; c.height = 256;
+  const g = c.getContext("2d");
+  const grad = g.createLinearGradient(0,0,0,256);
+  grad.addColorStop(0, "#3f8fc4"); grad.addColorStop(0.55, "#8ec3e2"); grad.addColorStop(0.78, "#cfe7f2"); grad.addColorStop(1, "#e8f3f7");
+  g.fillStyle = grad; g.fillRect(0,0,4,256);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(480, 24, 16),
+    new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog:false }));
+  scene.add(sky);
+}
+
+/* ============ LIGHTS ============ */
+scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x3a5a4a, 0.95));
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.6);
+sun.position.set(55, 80, 35);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -45; sun.shadow.camera.right = 45;
+sun.shadow.camera.top = 45; sun.shadow.camera.bottom = -45;
+sun.shadow.camera.near = 10; sun.shadow.camera.far = 220;
+sun.shadow.normalBias = 0.03;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xbfe0ff, 0.55);
+fill.position.set(-50, 30, -45);
+scene.add(fill);
+/* soft under-light so the red bottom, nozzles and rudders read in the stern-under view */
+const under = new THREE.DirectionalLight(0xffd9c4, 0.85);
+under.position.set(-25, -50, 25);
+scene.add(under);
+
+/* ============ MATERIALS ============ */
+const M = {
+  yellow : new THREE.MeshStandardMaterial({ color:0xf6c500, roughness:0.36, metalness:0.08 }),
+  yellow2: new THREE.MeshStandardMaterial({ color:0xffcf1a, roughness:0.42, metalness:0.06 }),
+  red    : new THREE.MeshStandardMaterial({ color:0xc9331d, roughness:0.46, metalness:0.06 }),
+  redDk  : new THREE.MeshStandardMaterial({ color:0x9e2413, roughness:0.5,  metalness:0.06 }),
+  white  : new THREE.MeshStandardMaterial({ color:0xf2f4f5, roughness:0.5,  metalness:0.04 }),
+  blue   : new THREE.MeshStandardMaterial({ color:0x1d7fc4, roughness:0.42, metalness:0.08 }),
+  glass  : new THREE.MeshStandardMaterial({ color:0x10222e, roughness:0.12, metalness:0.55 }),
+  dark   : new THREE.MeshStandardMaterial({ color:0x23282b, roughness:0.62, metalness:0.25 }),
+  black  : new THREE.MeshStandardMaterial({ color:0x101314, roughness:0.7,  metalness:0.15 }),
+  grey   : new THREE.MeshStandardMaterial({ color:0x8d979c, roughness:0.55, metalness:0.35 }),
+  deck   : new THREE.MeshStandardMaterial({ color:0xb9c0c2, roughness:0.8,  metalness:0.05 }),
+  deckDk : new THREE.MeshStandardMaterial({ color:0x4a5152, roughness:0.85, metalness:0.1 }),
+  orange : new THREE.MeshStandardMaterial({ color:0xf06423, roughness:0.45, metalness:0.05 }),
+  rope   : new THREE.MeshStandardMaterial({ color:0x6b6250, roughness:0.95 }),
+  bronze : new THREE.MeshStandardMaterial({ color:0x3c3f42, roughness:0.35, metalness:0.8 }),
+};
+function mesh(geo, mat, x=0, y=0, z=0, parent){
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  if (parent) parent.add(m);
+  return m;
+}
+function box(w, h, d, mat, x, y, z, parent){
+  return mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, parent);
+}
+function cyl(rt, rb, h, mat, x, y, z, parent, seg=18){
+  return mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat, x, y, z, parent);
+}
+/* text texture on a plane */
+function textPlane(text, w, h, { size=90, color="#123a6e", bg=null, bold=true, font="Arial" }={}){
+  const c = document.createElement("canvas"); c.width = 1024; c.height = Math.round(1024*h/w);
+  const g = c.getContext("2d");
+  if (bg){ g.fillStyle = bg; g.fillRect(0,0,c.width,c.height); }
+  g.fillStyle = color; g.textAlign = "center"; g.textBaseline = "middle";
+  g.font = `${bold?"900 ":""}${size}px ${font}`;
+  const lines = text.split("\n");
+  lines.forEach((ln, i)=> g.fillText(ln, c.width/2, c.height/2 + (i-(lines.length-1)/2)*(size*1.15)));
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: !bg, toneMapped:false }));
+  return m;
+}
+
+/* ============ SHIP ============ */
+const ship = new THREE.Group();
+scene.add(ship);
+
+/* Hull stations: x, halfWidth, deckY, keelY  (bow = +X) */
+const ST = [
+  [-26.0, 5.0, 2.55, -1.6], [-25.0, 6.0, 2.6, -2.6], [-22.0, 6.4, 2.65, -3.05],
+  [-16.0, 6.6, 2.7, -3.3], [-8.0, 6.7, 2.8, -3.35], [0.0, 6.7, 2.9, -3.35],
+  [8.0, 6.6, 3.05, -3.3], [14.0, 6.3, 3.25, -3.1], [19.0, 5.7, 3.55, -2.7],
+  [23.0, 4.4, 3.95, -1.9], [25.5, 2.5, 4.25, -0.7], [26.9, 0.3, 4.45, 0.7],
+];
+function halfWidthAt(x){
+  for (let i=0;i<ST.length-1;i++){
+    const a=ST[i], b=ST[i+1];
+    if (x>=a[0] && x<=b[0]){ const t=(x-a[0])/(b[0]-a[0]); return a[1]+(b[1]-a[1])*t; }
+  }
+  return ST[ST.length-1][1];
+}
+/* loft a surface through stations; profFn(t-station) -> list of [zFactor, y] */
+function loft(profFn, mat){
+  const pos = [], idx = [];
+  const prof0 = profFn(ST[0]);
+  const n = prof0.length;
+  ST.forEach(st=>{
+    profFn(st).forEach(([zf, y])=> pos.push(st[0], y, zf*st[1]));
+  });
+  for (let i=0;i<ST.length-1;i++) for (let j=0;j<n-1;j++){
+    const a=i*n+j, b=a+n;
+    idx.push(a, b, a+1, b, b+1, a+1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = true; m.receiveShadow = true;
+  ship.add(m); return m;
+}
+const WL = 0.15; // waterline y
+const tWL = st => (WL - st[3]) / (st[2] - st[3]);
+/* upper hull (yellow): deck -> waterline */
+loft(st=>{ const t=tWL(st); return [
+  [-1.00, st[2]], [-1.045, st[3]+(st[2]-st[3])*(t+ (1-t)*0.55)], [-1.035, st[3]+(st[2]-st[3])*(t+(1-t)*0.22)], [-1.005, WL],
+  [ 1.005, WL], [ 1.035, st[3]+(st[2]-st[3])*(t+(1-t)*0.22)], [ 1.045, st[3]+(st[2]-st[3])*(t+(1-t)*0.55)], [ 1.00, st[2]],
+];}, M.yellow);
+/* lower hull (red): waterline -> keel */
+loft(st=>[ [-1.005, WL], [-0.965, st[3]+(st[2]-st[3])*0.36], [-0.82, st[3]+(st[2]-st[3])*0.15], [-0.52, st[3]+(st[2]-st[3])*0.035], [0, st[3]],
+           [ 0.52, st[3]+(st[2]-st[3])*0.035], [ 0.82, st[3]+(st[2]-st[3])*0.15], [ 0.965, st[3]+(st[2]-st[3])*0.36], [ 1.005, WL] ], M.red);
+/* deck surface */
+{
+  const pos=[], idx=[];
+  ST.forEach(st=>{ pos.push(st[0], st[2]+0.02, -st[1]*0.995, st[0], st[2]+0.02, st[1]*0.995); });
+  for (let i=0;i<ST.length-1;i++){ const a=i*2; idx.push(a, a+2, a+1, a+2, a+3, a+1); }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos,3));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  const d=new THREE.Mesh(geo, M.deck); d.receiveShadow=true; ship.add(d);
+}
+/* transom (stern cap) */
+{
+  const shape = new THREE.Shape();
+  shape.moveTo(-5.0, 2.55); shape.lineTo(-5.9, 0.2); shape.lineTo(-4.6, -1.9); shape.lineTo(0, -2.45);
+  shape.lineTo(4.6, -1.9); shape.lineTo(5.9, 0.2); shape.lineTo(5.0, 2.55); shape.closePath();
+  const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), M.yellow);
+  m.rotation.y = -Math.PI/2; m.position.x = -25.98; ship.add(m);
+  const name = textPlane("HAPPY HUNTER\nAMSTERDAM", 7.2, 1.7, { size:110, color:"#12305e" });
+  name.rotation.y = -Math.PI/2; name.position.set(-26.06, 1.35, 0); ship.add(name);
+}
+/* bulwark aft working deck: dark inside walls */
+for (const s of [-1, 1]){
+  box(26, 1.15, 0.18, M.deckDk, -13.5, 3.35, s*6.28, ship);
+  box(26, 0.22, 0.3, M.dark, -13.5, 3.98, s*6.28, ship);
+}
+/* bow bulwark follows the hull sheer as short segments */
+for (const s of [-1, 1]) for (let i=0;i<3;i++){
+  const bx = 18.6 + i*2.6, bz = halfWidthAt(bx)*1.0;
+  const seg = box(2.7, 0.8, 0.16, M.yellow, bx, 3.62 + i*0.3, s*bz, ship);
+  seg.rotation.y = s * (0.22 + i*0.22);
+}
+
+/* ---- hull side details ---- */
+for (const s of [-1, 1]){
+  /* portholes row */
+  for (let x=-19; x<=16; x+=3.1){
+    if (x>4 && x<19) continue;
+    const p = mesh(new THREE.CircleGeometry(0.21, 12), M.dark, x, 1.55, s*(halfWidthAt(x)*1.028+0.02), ship);
+    if (s<0) p.rotation.y = Math.PI;
+  }
+  /* scupper slots along yellow side */
+  for (let x=-21; x<=20; x+=5.2){
+    box(1.5, 0.32, 0.06, M.dark, x, 2.28, s*(halfWidthAt(x)*1.035+0.02), ship);
+  }
+  /* bow name */
+  const nm = textPlane("HAPPY HUNTER", 6.8, 0.85, { size:120, color:"#123a6e" });
+  nm.position.set(20.2, 2.55, s*(halfWidthAt(20.2)*1.045+0.06));
+  nm.rotation.y = s>0 ? 0.34 : Math.PI - 0.34;
+  ship.add(nm);
+  /* anchor on bow */
+  const anch = new THREE.Group();
+  box(0.22, 1.5, 0.22, M.black, 0, 0, 0, anch);
+  box(1.15, 0.28, 0.22, M.black, 0, 0.72, 0, anch);
+  const fl1 = box(0.62, 0.62, 0.2, M.black, -0.42, -0.72, 0, anch); fl1.rotation.z = 0.6;
+  const fl2 = box(0.62, 0.62, 0.2, M.black, 0.42, -0.72, 0, anch); fl2.rotation.z = -0.6;
+  anch.position.set(23.6, 1.7, s*(halfWidthAt(23.6)*0.9));
+  anch.rotation.y = s>0 ? 0.62 : Math.PI-0.62;
+  ship.add(anch);
+  /* bow thruster tunnel mouth */
+  const bt = mesh(new THREE.CircleGeometry(0.78, 20), M.black, 22.2, -1.55, s*(halfWidthAt(22.2)*0.925), ship);
+  if (s<0) bt.rotation.y = Math.PI;
+  bt.rotation.x = 0; bt.rotation.z = 0;
+  const ring = mesh(new THREE.TorusGeometry(0.8, 0.09, 8, 22), M.redDk, 22.2, -1.55, s*(halfWidthAt(22.2)*0.93), ship);
+  /* bilge keel fin */
+  box(15, 0.55, 0.14, M.redDk, -2, -2.75, s*5.45, ship).rotation.x = s*0.5;
+}
+/* bow stem fender (black ribbed) */
+for (let i=0;i<4;i++) box(0.55, 0.42, 1.5, M.black, 26.55-i*0.28, 2.6+i*0.5, 0, ship).rotation.z = -0.35;
+/* bow thruster tunnel tube */
+{
+  const tube = cyl(0.72, 0.72, 8.4, M.dark, 22.2, -1.55, 0, ship);
+  tube.rotation.x = Math.PI/2;
+}
+
+/* ============ SUPERSTRUCTURE (white, blue bridge roof) ============ */
+const SS = new THREE.Group(); ship.add(SS);
+box(11, 3.0, 10.0, M.white, 12, 4.7, 0, SS);            // tier 1
+box(10, 2.7, 10.4, M.white, 12, 7.5, 0, SS);            // tier 2
+box(9.5, 2.6, 11.4, M.white, 12, 10.15, 0, SS);         // bridge tier
+box(10.6, 0.55, 12.4, M.blue, 12, 11.72, 0, SS);        // blue roof
+/* bridge windows: front band + side panes */
+box(0.1, 1.05, 9.6, M.glass, 16.82, 10.55, 0, SS);
+for (const s of [-1,1]) for (let i=0;i<4;i++)
+  box(1.55, 1.0, 0.08, M.glass, 9.6+i*1.95, 10.55, s*5.74, SS);
+/* small windows on tiers */
+for (const s of [-1,1]){
+  for (let i=0;i<4;i++) box(0.85, 0.8, 0.07, M.glass, 9.2+i*2.1, 7.6, s*5.24, SS);
+  for (let i=0;i<3;i++) box(0.8, 0.75, 0.07, M.glass, 10+i*2.1, 4.8, s*5.04, SS);
+  const mm = textPlane("MAMMOET", 8.8, 1.5, { size:150, color:"#14498c" });
+  mm.position.set(12, 8.9, s*5.28); if (s<0) mm.rotation.y = Math.PI;
+  SS.add(mm);
+  /* orange lifeboat on davits */
+  const boat = mesh(new THREE.CapsuleGeometry(0.82, 2.6, 6, 12), M.orange, 11.5, 8.35, s*6.05, SS);
+  boat.rotation.z = Math.PI/2;
+  box(0.18, 1.5, 0.18, M.grey, 10.2, 9.1, s*5.9, SS);
+  box(0.18, 1.5, 0.18, M.grey, 12.8, 9.1, s*5.9, SS);
+  /* life ring */
+  const ring = mesh(new THREE.TorusGeometry(0.5, 0.16, 8, 20), M.orange, 16.5, 6.4, s*5.3, SS);
+}
+/* door aft face + stairs hint */
+box(1.1, 2.0, 0.1, M.blue, 6.45, 4.4, 1.6, SS);
+
+/* railings helper */
+function railing(x1, z1, x2, z2, y, parent){
+  const g = new THREE.Group();
+  const len = Math.hypot(x2-x1, z2-z1), n = Math.max(2, Math.round(len/1.7));
+  for (let i=0;i<=n;i++){
+    const t=i/n;
+    cyl(0.045, 0.045, 1.0, M.white, x1+(x2-x1)*t, y+0.5, z1+(z2-z1)*t, g, 6);
+  }
+  const rail = box(len, 0.07, 0.07, M.white, (x1+x2)/2, y+1.0, (z1+z2)/2, g);
+  rail.rotation.y = -Math.atan2(z2-z1, x2-x1);
+  const mid = box(len, 0.05, 0.05, M.white, (x1+x2)/2, y+0.55, (z1+z2)/2, g);
+  mid.rotation.y = -Math.atan2(z2-z1, x2-x1);
+  parent.add(g); return g;
+}
+/* railings: bridge top, tier2 top front, foredeck, aft deck front edge */
+railing(7.2, -5.6, 7.2, 5.6, 11.95, SS); railing(7.2, 5.6, 16.8, 5.6, 11.95, SS); railing(7.2, -5.6, 16.8, -5.6, 11.95, SS);
+for (const s of [-1,1]) railing(6.8, s*5.1, 6.8, s*1.2, 8.85, SS);
+for (const s of [-1,1]) railing(17.5, s*4.6, 24.5, s*2.2, 3.9, ship);
+railing(1.5, -6.2, 1.5, 6.2, 2.95, ship);
+
+/* ============ FUNNELS (twin yellow stacks, elephant logo) ============ */
+function elephantTexture(){
+  const c = document.createElement("canvas"); c.width = c.height = 256;
+  const g = c.getContext("2d");
+  g.fillStyle = "#14498c";
+  g.beginPath(); // simple elephant silhouette from ellipses
+  g.ellipse(118, 128, 62, 44, 0, 0, Math.PI*2);
+  g.ellipse(178, 108, 27, 30, 0, 0, Math.PI*2);
+  g.fill();
+  g.fillRect(88, 158, 16, 52); g.fillRect(140, 158, 16, 52);
+  g.beginPath(); g.moveTo(196, 122); g.quadraticCurveTo(222, 150, 208, 186); g.lineTo(196, 184); g.quadraticCurveTo(204, 152, 188, 132); g.fill();
+  g.fillStyle = "#f6c500"; g.beginPath(); g.arc(172, 100, 5, 0, Math.PI*2); g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const eleTex = elephantTexture();
+for (const s of [-1,1]){
+  const f = box(3.4, 6.6, 2.7, M.yellow2, 4.2, 9.4, s*2.95, ship);
+  f.rotation.z = -0.07;
+  box(3.5, 0.5, 2.8, M.black, 3.95, 12.85, s*2.95, ship).rotation.z = -0.07;
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2),
+    new THREE.MeshBasicMaterial({ map: eleTex, transparent:true, toneMapped:false }));
+  logo.position.set(4.35, 10.6, s*4.36); if (s<0) logo.rotation.y = Math.PI;
+  ship.add(logo);
+}
+
+/* ============ MASTS ============ */
+/* main mast behind funnels (white) */
+const mainMast = new THREE.Group(); mainMast.position.set(5.6, 12.4, 0); ship.add(mainMast);
+cyl(0.13, 0.17, 9.5, M.white, 0, 4.7, 0, mainMast, 10);
+box(3.4, 0.12, 0.12, M.white, 0, 7.6, 0, mainMast);
+box(0.12, 0.12, 2.6, M.white, 0, 6.4, 0, mainMast);
+cyl(0.05, 0.05, 2.6, M.white, 0, 10.4, 0, mainMast, 6);
+const radar = box(2.3, 0.16, 0.4, M.white, 0, 8.9, 0, mainMast);
+box(1.6, 0.5, 1.0, M.white, 0, 5.6, 0, mainMast);
+for (const s of [-1,1]) cyl(0.09, 0.09, 0.8, M.dark, -0.7, 7.15, s*0.9, mainMast, 8);
+/* Dutch flag on main mast yard */
+{
+  const c = document.createElement("canvas"); c.width=90; c.height=60;
+  const g=c.getContext("2d");
+  g.fillStyle="#ae1c28"; g.fillRect(0,0,90,20);
+  g.fillStyle="#fff"; g.fillRect(0,20,90,20);
+  g.fillStyle="#21468b"; g.fillRect(0,40,90,20);
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace;
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.1),
+    new THREE.MeshBasicMaterial({ map:t, side:THREE.DoubleSide, toneMapped:false }));
+  flag.position.set(-1.15, 7.5, 0); mainMast.add(flag);
+  mainMast.userData.flag = flag;
+}
+/* fore mast (white A-frame) on foredeck */
+const foreMast = new THREE.Group(); foreMast.position.set(20.5, 3.9, 0); ship.add(foreMast);
+for (const s of [-1,1]){
+  const leg = cyl(0.09, 0.11, 8.6, M.white, -0.7, 4.1, s*1.5, foreMast, 8);
+  leg.rotation.x = s*0.18; leg.rotation.z = 0.16;
+}
+box(0.14, 0.14, 3.4, M.white, 0.55, 7.4, 0, foreMast);
+cyl(0.07, 0.07, 3.2, M.white, 0.6, 9.2, 0, foreMast, 8);
+box(1.7, 0.1, 0.1, M.white, 0.6, 8.3, 0, foreMast);
+for (const s of [-1,1]) cyl(0.07, 0.07, 0.6, M.dark, 0.6, 7.9, s*0.8, foreMast, 6);
+
+/* ============ FOREDECK GEAR ============ */
+box(2.6, 1.0, 1.8, M.dark, 23.2, 4.6, 0, ship);                 // windlass
+for (const s of [-1,1]){
+  cyl(0.42, 0.42, 0.5, M.grey, 22.4, 5.25, s*0.95, ship).rotation.x = Math.PI/2;
+  for (const bx of [18.2, 24.6]){ cyl(0.14, 0.14, 0.7, M.dark, bx, 4.35, s*3.4, ship, 8); cyl(0.14, 0.14, 0.7, M.dark, bx, 4.35, s*2.75, ship, 8); }
+}
+
+/* ============ AFT WORKING DECK ============ */
+{
+  const wd = box(27, 0.14, 11.6, M.deck, -13.2, 2.83, 0, ship); wd.receiveShadow = true;
+  /* towing winch */
+  const drum = cyl(1.05, 1.05, 3.1, M.dark, -3.4, 3.95, 0, ship); drum.rotation.x = Math.PI/2;
+  for (const s of [-1,1]) box(0.35, 2.0, 0.3, M.grey, -3.4, 3.8, s*1.85, ship);
+  const drum2 = cyl(0.8, 0.8, 2.4, M.grey, -6.4, 3.7, 0, ship); drum2.rotation.x = Math.PI/2;
+  /* towing A-frames / hook posts */
+  for (const ax of [-13.5, -19.5]){
+    for (const s of [-1,1]){
+      const p = cyl(0.11, 0.13, 3.4, M.black, ax, 4.4, s*1.5, ship, 8);
+      p.rotation.x = s*-0.42;
+    }
+    box(0.16, 0.16, 1.4, M.black, ax, 5.85, 0, ship);
+  }
+  /* bollards + gear on deck */
+  for (const s of [-1,1]) for (const bx of [-9.5, -16.5, -23]){
+    cyl(0.15, 0.15, 0.75, M.dark, bx, 3.25, s*5.2, ship, 8);
+    cyl(0.15, 0.15, 0.75, M.dark, bx, 3.25, s*4.5, ship, 8);
+  }
+  const coil = mesh(new THREE.TorusGeometry(0.85, 0.3, 8, 20), M.rope, -10.5, 3.15, -3.4, ship);
+  coil.rotation.x = Math.PI/2;
+  box(2.2, 1.1, 1.5, M.grey, -17.5, 3.45, 3.2, ship);
+  box(1.6, 0.9, 1.2, M.orange, -21, 3.35, -3.6, ship);
+  /* stern cross beam */
+  box(0.3, 0.3, 10.6, M.dark, -24.9, 3.6, 0, ship);
+}
+
+/* ============ PROPULSION: twin Kort nozzles + rudders (stern underside) ============ */
+const props = [];
+for (const s of [-1,1]){
+  const g = new THREE.Group(); g.position.set(-24.2, -3.0, s*3.35); ship.add(g);
+  /* nozzle ring (open cylinder, axis X) */
+  const noz = mesh(new THREE.CylinderGeometry(1.85, 1.85, 1.5, 26, 1, true), M.red, 0, 0, 0, g);
+  noz.rotation.z = Math.PI/2; noz.material = M.red;
+  const nozIn = mesh(new THREE.CylinderGeometry(1.78, 1.78, 1.5, 26, 1, true),
+    new THREE.MeshStandardMaterial({ color:0x7e1a0e, roughness:0.6, side:THREE.BackSide }), 0, 0, 0, g);
+  nozIn.rotation.z = Math.PI/2;
+  const lip1 = mesh(new THREE.TorusGeometry(1.85, 0.1, 8, 26), M.redDk, 0.75, 0, 0, g); lip1.rotation.y = Math.PI/2;
+  const lip2 = mesh(new THREE.TorusGeometry(1.85, 0.1, 8, 26), M.redDk, -0.75, 0, 0, g); lip2.rotation.y = Math.PI/2;
+  /* propeller: hub + 4 blades, spins around X */
+  const prop = new THREE.Group(); prop.position.set(0.1, 0, 0); g.add(prop);
+  mesh(new THREE.SphereGeometry(0.34, 12, 10), M.bronze, 0, 0, 0, prop);
+  for (let i=0;i<4;i++){
+    const bl = box(0.08, 1.35, 0.62, M.bronze, 0, 0.85, 0, prop);
+    const holder = new THREE.Group(); holder.rotation.x = i*Math.PI/2 + 0.4;
+    prop.remove(bl); bl.position.set(0, 0.85, 0); bl.rotation.x = 0.5; holder.add(bl); prop.add(holder);
+  }
+  props.push(prop);
+  /* shaft from hull */
+  const shaft = cyl(0.16, 0.16, 3.4, M.redDk, 0, 0, 0, g); shaft.rotation.z = Math.PI/2 - 0.18; shaft.position.set(2.2, 0.55, 0);
+  /* support fin ahead of nozzle */
+  box(1.4, 1.5, 0.22, M.red, 2.4, 0.95, 0, g);
+  /* rudder behind nozzle + post */
+  box(1.0, 3.1, 0.2, M.red, -1.95, 0.05, 0, g);
+  cyl(0.14, 0.14, 2.6, M.redDk, -1.95, 2.2, 0, g, 10);
+  mesh(new THREE.SphereGeometry(0.42, 12, 10), M.red, -1.95, 3.35, 0, g);
+}
+
+/* ============ OCEAN ============ */
+const oceanGeo = new THREE.PlaneGeometry(560, 560, 72, 72);
+const oceanMat = new THREE.MeshStandardMaterial({ color:0x166b74, roughness:0.62, metalness:0.0, transparent:true, opacity:0.94 });
+const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+ocean.rotation.x = -Math.PI/2; ocean.position.y = 0;
+ocean.receiveShadow = true;
+scene.add(ocean);
+const oPos = oceanGeo.attributes.position;
+const oBase = oPos.array.slice();
+
+/* ============ LABELS ============ */
+const labelDefs = [
+  [16.8, 11.2, 0, "Đài chỉ huy (mái xanh)"],
+  [12, 8.6, 6.4, "Xuồng cứu sinh"],
+  [4.2, 13.2, 3, "Ống khói Mammoet"],
+  [5.6, 22.6, 0, "Cột radar chính"],
+  [20.5, 13.2, 0, "Cột trước"],
+  [23.4, 5.6, 0, "Tời neo mũi"],
+  [22.2, -1.4, 6.4, "Máy đẩy mũi"],
+  [-3.4, 5.4, 0, "Tời kéo — boong làm việc"],
+  [-24.2, -3, 3.4, "Chân vịt ống Kort"],
+  [-26.2, -2.8, -3.4, "Bánh lái"],
+  [21, 3.6, 5.6, "Tên tàu ở mũi"],
+  [-19, 4.4, -6.4, "Boong làm việc (đuôi)"],
+];
+const labelWrap = document.getElementById("labels");
+const labelEls = labelDefs.map(([x,y,z,txt])=>{
+  const el = document.createElement("div"); el.className = "lbl"; el.textContent = txt;
+  labelWrap.appendChild(el);
+  return { el, v: new THREE.Vector3(x, y, z) };
+});
+let labelsOn = true;
+
+/* ============ CAMERA PRESETS ============ */
+let camAnim = null;
+function flyTo(pos, tgt, oceanGhost=false){
+  const tp = new THREE.Vector3(...pos);
+  /* arc path: control point pushed outward + up so the camera never cuts through the ship */
+  const mid = camera.position.clone().add(tp).multiplyScalar(0.5);
+  const out = mid.clone(); out.y = 0;
+  if (out.length() > 0.01) out.setLength(Math.max(camera.position.length(), tp.length()) * 1.05 + 14);
+  mid.x = out.x; mid.z = out.z; mid.y = Math.max(camera.position.y, tp.y) + 16;
+  camAnim = { start: timer.getElapsed(), dur: 1.7, fp: camera.position.clone(), tp, mid,
+              ft: controls.target.clone(), tt: new THREE.Vector3(...tgt) };
+  controls.autoRotate = false; document.getElementById("btnSpin").classList.remove("on");
+  oceanMat.opacity = oceanGhost ? 0.16 : 0.94;
+  oceanMat.depthWrite = !oceanGhost;
+}
+const VIEWS = {
+  toan:  [[40, 17, 47], [0, 2, 0]],
+  mui:   [[46, 9, -30], [17, 3.5, 0]],
+  dui:   [[-47, -11, 27], [-22, -2.5, 0], true],
+  boong: [[-33, 19, 21], [-11, 3, 0]],
+  dai:   [[29, 14.5, 21], [11.5, 9, 0]],
+};
+document.querySelectorAll("[data-view]").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    const v = VIEWS[b.dataset.view];
+    flyTo(v[0], v[1], !!v[2]);
+  });
+});
+document.getElementById("btnLabels").addEventListener("click", e=>{
+  labelsOn = !labelsOn; e.currentTarget.classList.toggle("on", labelsOn);
+  labelWrap.style.display = labelsOn ? "block" : "none";
+});
+document.getElementById("btnSpin").addEventListener("click", e=>{
+  controls.autoRotate = !controls.autoRotate;
+  e.currentTarget.classList.toggle("on", controls.autoRotate);
+});
+
+/* ============ LOOP ============ */
+const timer = new THREE.Timer(); timer.connect(document);
+const v3 = new THREE.Vector3();
+function animate(){
+  timer.update();
+  const t = timer.getElapsed();
+  /* gentle bobbing */
+  ship.position.y = Math.sin(t*0.55)*0.14;
+  ship.rotation.z = Math.sin(t*0.42)*0.006;
+  ship.rotation.x = Math.sin(t*0.5+1)*0.005;
+  /* propellers spin + radar sweeps */
+  props.forEach((p, i)=>{ p.rotation.x = t*2.4*(i? -1:1); });
+  radar.rotation.y = t*0.9;
+  if (mainMast.userData.flag) mainMast.userData.flag.rotation.y = Math.sin(t*2.2)*0.28;
+  /* waves */
+  for (let i=0;i<oPos.count;i++){
+    const x = oBase[i*3], y = oBase[i*3+1];
+    oPos.setZ(i, Math.sin(x*0.055 + t*0.9)*0.42 + Math.cos(y*0.07 + t*0.7)*0.38);
+  }
+  oPos.needsUpdate = true;
+  if ((animate._f = (animate._f||0)+1) % 3 === 0) oceanGeo.computeVertexNormals();
+  /* camera fly (quadratic bezier arc, time-based) */
+  if (camAnim){
+    const raw = Math.min(1, (t - camAnim.start) / camAnim.dur);
+    const k = 1-Math.pow(1-raw, 3);
+    const a = camAnim.fp.clone().lerp(camAnim.mid, k);
+    const b = camAnim.mid.clone().lerp(camAnim.tp, k);
+    camera.position.copy(a.lerp(b, k));
+    controls.target.lerpVectors(camAnim.ft, camAnim.tt, k);
+    if (raw>=1) camAnim = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  /* labels */
+  if (labelsOn){
+    for (const { el, v } of labelEls){
+      v3.copy(v); ship.localToWorld(v3); v3.project(camera);
+      const behind = v3.z > 1;
+      el.style.display = behind ? "none" : "block";
+      if (!behind){
+        el.style.left = (v3.x*0.5+0.5)*innerWidth + "px";
+        el.style.top = (-v3.y*0.5+0.5)*innerHeight + "px";
+      }
+    }
+  }
+}
+renderer.setAnimationLoop(animate);
+
+addEventListener("resize", ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+window.__shipReady = true;
+</script>
+</body>
+</html>
